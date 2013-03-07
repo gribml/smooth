@@ -11,7 +11,10 @@ public:
   CLWrapper();
   cl::Kernel compileKernel(const char *kernelFile, const char *kernelName);
   cl::Buffer uploadData(cl_mem_flags flags, size_t size, void *ptr);
-  void run(cl::Kernel kernel);
+  void downloadData(cl::Buffer buff, size_t size, void *ptr);
+  void run(cl::Kernel kernel, cl::NDRange global, cl::NDRange local);
+  void flush();
+
 private:
   std::vector<cl::Platform> platforms;
   std::vector<cl::Device> devices;

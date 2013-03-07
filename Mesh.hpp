@@ -11,6 +11,8 @@
 #include <set>
 #include <vector>
 
+#include <vtkUnstructuredGrid.h>
+
 #include "CLWrapper.hpp"
 
 struct Quality{
@@ -25,12 +27,26 @@ public:
   Mesh(const char *filename);
   ~Mesh();
 
-  size_t NNodes;    // Number of mesh vertices.
-  size_t NElements; // Number of mesh elements.
+  void smooth(size_t niter);
+  bool isSurfaceNode(size_t vid) const;
+  bool isCornerNode(size_t vid) const;
+  double element_area(size_t eid) const;
+  double element_quality(size_t eid) const;
+  Quality get_mesh_quality();
+
+private:
+  void color_mesh(vtkUnstructuredGrid* ug);
+  void create_adjacency();
+  void find_surface();
+  void set_orientation();
+
+public:
+  cl_uint NNodes;    // Number of mesh vertices.
+  cl_uint NElements; // Number of mesh elements.
 
   // Element eid is comprised of the vertices
   // ENList[3*eid], ENList[3*eid+1] and ENList[3*eid+2].
-  size_t *ENList;
+  cl_uint *ENList;
 
   // Vertex vid has coordinates x=coords[2*vid] and y=coords[2*vid+1].
   double *coords;
@@ -56,21 +72,19 @@ public:
   // For every vertex i, NEList[i] contains the IDs of all adjacent elements.
   std::set<size_t> *NEList;
 
-  void smooth(size_t niter);
-  bool isSurfaceNode(size_t vid) const;
-  bool isCornerNode(size_t vid) const;
-  double element_area(size_t eid) const;
-  double element_quality(size_t eid) const;
-  Quality get_mesh_quality() const;
-
 private:
-  void create_adjacency();
-  void find_surface();
-  void set_orientation();
+  // See if we're in OpenCL mode
+  bool clMode;
+  cl_uint  colorCount;
+  cl_uint *colorIdxs;
+  cl_uint *colorOffs;
+  cl_uint *colorVals;
 
   CLWrapper *wrapper;
   cl::Kernel smooth_kernel;
   int orientation;
+  cl::Buffer NEListBuff, NNListBuff, NEListOffsBuff, NNListOffsBuff,
+    ENListBuff, metricBuff, coordsBuff, normalsBuff, colorBuff;
 };
 
 #endif /* MESH_HPP_ */

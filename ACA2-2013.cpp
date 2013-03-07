@@ -38,7 +38,8 @@ int main(int argc, char **argv){
             << "Quality min:   " << q.min << std::endl;
 
   double time = get_wtime();
-  smooth(mesh, 200);
+  mesh->smooth(200);
+  //smooth(mesh, 200);
   double time_smooth = get_wtime() - time;
 
   q = mesh->get_mesh_quality();

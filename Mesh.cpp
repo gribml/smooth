@@ -19,15 +19,13 @@
 
 #include "Mesh.hpp"
 
-Mesh::Mesh(const char *filename) {
+Mesh::Mesh(const char *filename) : clMode(false) {
   // Check whether the provided file exists.
   std::ifstream ifile(filename);
   if(!ifile) {
     std::cerr << "File " << filename << " does not exist." << std::endl;
     exit(EXIT_FAILURE);
   }
-
-  wrapper = new CLWrapper();
 
   vtkXMLUnstructuredGridReader *reader = vtkXMLUnstructuredGridReader::New();
   reader->SetFileName(filename);
@@ -40,10 +38,10 @@ Mesh::Mesh(const char *filename) {
 
   NNList  = new std::vector<size_t>[NNodes];
   NEList  = new std::set   <size_t>[NNodes];
-  normals = new double[2 * NNodes];
-  ENList  = new size_t[3 * NElements];
-  metric  = new double[3 * NNodes];
-  coords  = new double[2 * NNodes];
+  normals = new double [2 * NNodes];
+  ENList  = new cl_uint[3 * NElements];
+  metric  = new double [3 * NNodes];
+  coords  = new double [2 * NNodes];
 
   // Get the coordinates of each mesh vertex. There is no z coordinate in 2D,
   // but VTK treats 2D and 3D meshes uniformly, so we have to provide memory
@@ -72,19 +70,58 @@ Mesh::Mesh(const char *filename) {
     }
   }
 
-  reader->Delete();
-
   create_adjacency();
   find_surface();
   set_orientation();
 
-  cl::Buffer coordsBuff  = wrapper->uploadData(CL_MEM_READ_WRITE, 2 * NNodes * sizeof(float), coords);
-  cl::Buffer normalsBuff = wrapper->uploadData(CL_MEM_READ_ONLY, 2 * NNodes * sizeof(float), normals);
+  color_mesh(ug);
 
+  reader->Delete();
+
+  size_t NEListLen = 0;
+  size_t NNListLen = 0;
+
+  for(size_t i = 0; i < NNodes; ++i) {
+    NEListLen += NEList[i].size();
+    NNListLen += NNList[i].size();
+  }
+
+  cl_uint *NEListVals = new cl_uint[NEListLen];
+  cl_uint *NNListVals = new cl_uint[NNListLen];
+
+  cl_uint *NEListOffs = new cl_uint[NNodes + 1];
+  cl_uint *NNListOffs = new cl_uint[NNodes + 1];
+
+  NEListOffs[0] = 0;
+  NNListOffs[0] = 0;
+
+  size_t NECurrOff = 0;
+  size_t NNCurrOff = 0;
+
+  for(size_t i = 0; i < NNodes; ++i) {
+    NEListOffs[i + 1] = NEListOffs[i] + NEList[i].size();
+    NNListOffs[i + 1] = NNListOffs[i] + NNList[i].size();
+
+    for(std::set<size_t>::const_iterator it = NEList[i].begin();
+      it != NEList[i].end(); ++it)
+      NEListVals[NECurrOff++] = *it;
+    for(std::vector<size_t>::const_iterator it = NNList[i].begin();
+      it != NNList[i].end(); ++it)
+      NNListVals[NNCurrOff++] = *it;
+  }
+
+  wrapper = new CLWrapper();
   smooth_kernel = wrapper->compileKernel("Mesh.cl", "smooth");
-  smooth_kernel.setArg(0, coordsBuff);
-  smooth_kernel.setArg(1, normalsBuff);
-  smooth_kernel.setArg(2, NNodes);
+
+  NEListOffsBuff = wrapper->uploadData(CL_MEM_READ_ONLY,   (NNodes + 1) * sizeof(cl_uint), NEListOffs);
+  NNListOffsBuff = wrapper->uploadData(CL_MEM_READ_ONLY,   (NNodes + 1) * sizeof(cl_uint), NNListOffs);
+  NEListBuff     = wrapper->uploadData(CL_MEM_READ_ONLY,   NEListLen    * sizeof(cl_uint), NEListVals);
+  NNListBuff     = wrapper->uploadData(CL_MEM_READ_ONLY,   NNListLen    * sizeof(cl_uint), NNListVals);
+  ENListBuff     = wrapper->uploadData(CL_MEM_READ_ONLY,  3 * NElements * sizeof(cl_uint), ENList);
+  metricBuff     = wrapper->uploadData(CL_MEM_READ_ONLY,  3 * NNodes    * sizeof(double),  metric);
+  coordsBuff     = wrapper->uploadData(CL_MEM_READ_WRITE, 2 * NNodes    * sizeof(double),  coords);
+  normalsBuff    = wrapper->uploadData(CL_MEM_READ_ONLY,  2 * NNodes    * sizeof(double),  normals);
+  colorBuff      = wrapper->uploadData(CL_MEM_READ_ONLY,      NNodes    * sizeof(cl_uint), colorVals);
 }
 
 Mesh::~Mesh() {
@@ -100,7 +137,7 @@ Mesh::~Mesh() {
 void Mesh::create_adjacency() {
   for(size_t eid = 0; eid < NElements; ++eid) {
     // Get a pointer to the three vertices comprising element eid.
-    const size_t *n = &ENList[3 * eid];
+    const cl_uint *n = &ENList[3 * eid];
 
     // For each vertex, add the other two vertices to its node-node adjacency
     // list and element eid to its node-element adjacency list.
@@ -183,7 +220,7 @@ void Mesh::find_surface(){
  */
 void Mesh::set_orientation() {
   // Find the orientation for the first element
-  const size_t *n = &ENList[0];
+  const cl_uint *n = &ENList[0];
 
   // Pointers to the coordinates of each vertex
   const double *c0 = &coords[2*n[0]];
@@ -200,22 +237,42 @@ void Mesh::set_orientation() {
 }
 
 void Mesh::smooth(size_t niter) {
+  const size_t local_size = 128;
+  cl::NDRange local_ws    = local_size;
+
+  size_t argnum = 0;
+  smooth_kernel.setArg(argnum++, NEListBuff);
+  smooth_kernel.setArg(argnum++, NNListBuff);
+  smooth_kernel.setArg(argnum++, NEListOffsBuff);
+  smooth_kernel.setArg(argnum++, NNListOffsBuff);
+  smooth_kernel.setArg(argnum++, ENListBuff);
+  smooth_kernel.setArg(argnum++, metricBuff);
+  smooth_kernel.setArg(argnum++, coordsBuff);
+  smooth_kernel.setArg(argnum++, normalsBuff);
+  smooth_kernel.setArg(argnum++, colorBuff);
+  smooth_kernel.setArg(argnum++, sizeof(cl_uint), &orientation);
+
+  clMode = true;
   for(size_t iter = 0; iter < niter; ++iter) {
+    const size_t arr[7] = {1, 0, 3, 2, 4, 5, 6};
+    for(size_t i = 0; i < colorCount; ++i) {
+      size_t global_size = (colorIdxs[arr[i]] + local_size - 1) & ~(local_size - 1);
+      cl::NDRange global_ws   = global_size;
+
+      smooth_kernel.setArg(argnum,     sizeof(cl_uint), &colorIdxs[arr[i]]);
+      smooth_kernel.setArg(argnum + 1, sizeof(cl_uint), &colorOffs[arr[i]]);
+      wrapper->run(smooth_kernel, global_ws, local_ws);
+    }
   }
+  wrapper->flush();
 }
 
 bool Mesh::isSurfaceNode(size_t vid) const {
-  std::cerr << "TODO: Convert " << __PRETTY_FUNCTION__ << " to OpenCL" << endl;
-  exit(1);
-
   return NEList[vid].size() < NNList[vid].size();
 }
 
 bool Mesh::isCornerNode(size_t vid) const {
-  std::cerr << "TODO: Convert " << __PRETTY_FUNCTION__ << " to OpenCL" << endl;
-  exit(1);
-
-  return fabs(normals[2*vid])==1.0 && fabs(normals[2*vid+1]==1.0);
+  return fabs(normals[2*vid])==1.0 && fabs(normals[2*vid+1])==1.0;
 }
 
 /* Element area in physical (Euclidean) space. Recall that the area of a
@@ -224,10 +281,7 @@ bool Mesh::isCornerNode(size_t vid) const {
  * the orientation factor ±1.0, so that the area is always a positive number.
  */
 double Mesh::element_area(size_t eid) const{
-  std::cerr << "TODO: Convert " << __PRETTY_FUNCTION__ << " to OpenCL" << endl;
-  exit(1);
-
-  const size_t *n = &ENList[3*eid];
+  const cl_uint *n = &ENList[3*eid];
 
   // Pointers to the coordinates of each vertex
   const double *c0 = &coords[2*n[0]];
@@ -245,11 +299,8 @@ double Mesh::element_area(size_t eid) const{
  * for Quasioptimal Mesh Generation, Computational Mathematics and Mathematical
  * Physics, Vol. 39, No. 9, 1999, pp. 1468 - 1486.
  */
-double Mesh::element_quality(size_t eid) const{
-  std::cerr << "TODO: Convert " << __PRETTY_FUNCTION__ << " to OpenCL" << endl;
-  exit(1);
-
-  const size_t *n = &ENList[3*eid];
+double Mesh::element_quality(size_t eid) const {
+  const cl_uint *n = &ENList[3*eid];
 
   // Pointers to the coordinates of each vertex
   const double *c0 = &coords[2*n[0]];
@@ -294,9 +345,11 @@ double Mesh::element_quality(size_t eid) const{
 
 // Finds the mean quality, averaged over all mesh elements,
 // and the quality of the worst element.
-Quality Mesh::get_mesh_quality() const {
-  //std::cerr << "TODO: Convert " << __PRETTY_FUNCTION__ << " to OpenCL" << endl;
-  //exit(1);
+Quality Mesh::get_mesh_quality() {
+  if(clMode) {
+    wrapper->downloadData(coordsBuff, sizeof(double) * NNodes * 2, coords);
+    clMode = false;
+  }
 
   Quality q;
 
@@ -314,4 +367,57 @@ Quality Mesh::get_mesh_quality() const {
   q.min = min_q;
 
   return q;
+}
+
+void Mesh::color_mesh(vtkUnstructuredGrid* ug) {
+  cl_uint *colors = new cl_uint[NNodes];
+  cl_uint color;
+  colorCount = 0;
+
+  for(size_t vid = 0; vid<NNodes; ++vid) {
+    colors[vid] = -1;
+  }
+
+  for(size_t vid = 0; vid < NNodes; ++vid) {
+    color = 0;
+    bool foundColor;
+    do {
+      foundColor = true;
+      for(std::vector<size_t>::const_iterator it = NNList[vid].begin();
+          it != NNList[vid].end(); ++it) {
+        if(colors[*it] == color) {
+          foundColor = false;
+          break;
+        }
+      }
+    } while(!foundColor && ++color);
+    colorCount = colorCount >= color ? colorCount : color;
+    colors[vid] = color;
+  }
+
+  ++colorCount;
+  std::cout << "Amount of colours: " << colorCount << std::endl;
+
+  for (size_t vid = 0; vid < NNodes; ++vid) {
+    assert( colors[vid] != (cl_uint)-1 );
+  }
+
+  colorOffs = new cl_uint[colorCount + 1];
+  colorIdxs = new cl_uint[colorCount]();
+  colorVals = new cl_uint[NNodes];
+
+  for(size_t vid = 0; vid<NNodes; ++vid)
+    ++colorIdxs[colors[vid]];
+
+  colorOffs[0] = 0;
+  for(size_t i = 0; i < colorCount; ++i) {
+    colorOffs[i + 1] = colorOffs[i] + colorIdxs[i];
+    colorIdxs[i]     = 0;
+  }
+
+  for(size_t vid = 0; vid<NNodes; ++vid) {
+    colorVals[colorOffs[colors[vid]] + colorIdxs[colors[vid]]++] = vid;
+  }
+
+  delete[] colors;
 }
