@@ -83,7 +83,7 @@
 \DeclareMathOperator*{\argmin}{ArgMin\ }
 \DeclareMathOperator*{\argmax}{ArgMax\ }
 
-\usepackage{algorithm}
+\usepackage[options]{algorithm}
 \usepackage{algorithmic}
 
 \usepackage[usenames,dvipsnames]{xcolor}
@@ -215,7 +215,25 @@ As first, naiive, parallelisation attempt, we used OpenMP, a multicore programmi
 To properly take advantage of OpenCL and the NVIDIA GPU on our testing platform, we chose to parallelise the work being done by the \verb+smooth+ function, which computes a \emph{quality} measure at each node, calculates updated coordinates for that node, then recomputes \emph{quality} to ensure that it improved.  It rolls back the changes results if \emph{quality} decreases.  The challenge of parallelising this code is twofold: eliminate contention between threads doing work on adjacent nodes, then write code to copy the relevant data to the GPU and do the correct computation within each thread.
 
 \subsection{Mesh Coloring}
-We employed a simple approach to color the nodes.
+We employed a simple approach to ``color'' the nodes, i.e. assign different values to non-adjacent nodes.  Coloring the nodes is necessary to ensure that concurrently executing threads on the GPU do not move coordinates of each other's adjacent nodes.  Our algorithm iterates over the nodes and assigns to itself the lowest unused color among that node's adjacency list.
+\begin{algorithm}[H]
+\caption{Graph Coloring}
+\label{al:color}
+\begin{algorithmic}[1]
+\STATE Initialize colors[vid] to -1 $\forall$ vid
+\FOR{$vid=1\hdots m$}
+  \STATE color = 0
+  \FOR{$j=1\hdots n_{vid}$}
+    \IF{colors[j] == color}
+      \STATE foundColor = false
+      \STATE break
+    \ENDIF
+  \ENDFOR
+  \STATE colors[vid] = color;
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
 \section{Results}
 %  various charts and tables of data from running the code
 \section{Conclusion}
