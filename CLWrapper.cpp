@@ -10,7 +10,7 @@ CLWrapper::CLWrapper() {
 
     // create context
     cl_context_properties properties[] = { CL_CONTEXT_PLATFORM, (cl_context_properties)(platforms[0])(), 0};
-    context = cl::Context(CL_DEVICE_TYPE_CPU, properties);
+    context = cl::Context(CL_DEVICE_TYPE_GPU, properties);
     devices = context.getInfo<CL_CONTEXT_DEVICES>();
 
     // create command queue

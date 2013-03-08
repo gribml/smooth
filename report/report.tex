@@ -283,17 +283,22 @@ Our algorithm iterates over the nodes and assigns to itself the lowest unused co
 \STATE Initialise colours[vid] to -1 $\forall$ vid
 \FOR{$vid=1\hdots m$}
   \STATE colour = 0
-  \FOR{$j=1\hdots n_{vid}$}
-    \IF{colours[j] == colour}
-      \STATE foundColour = false
-      \STATE break
-    \ENDIF
-  \ENDFOR
+  \WHILE{!foundColour and colour++}
+    \STATE foundColour = true
+    \FOR{$j=1\hdots n_{vid}$}
+      \IF{colours[j] == colour}
+        \STATE foundColour = false
+        \STATE break
+      \ENDIF
+    \ENDFOR
+  \ENDWHILE
   \STATE colours[vid] = colour;
 \ENDFOR
 \end{algorithmic}
 \end{algorithm}
 On the small mesh we studied, this algorithm used 7 colors to cover the mesh.  These 7 colors represent 7 iterations over which the GPU will make updates to the mesh, as each of those computations will be guaranteed to be free of contention.  
+
+The algorithm initially picks an initial colour for a node, and then checks whether the other nodes have already been assigned that particular colour. If a conflict has been discovered, the colour is incremented and checked again. However, if no conflict has been found, the colour is assigned to the node, and a new iteration begins.
 
 \subsection{OpenCL-specific Implementation}
 OpenCL is a GPU computing framework supported by the open source community supported by most commercial GPU and CPU hardware.
