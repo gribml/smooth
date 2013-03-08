@@ -1,0 +1,13 @@
+ACA2-2013
+*.o
+*.aux
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.pdf
+*.synctex.gz
+*.vtu
+\#*\#
+.\#*
+*\~
