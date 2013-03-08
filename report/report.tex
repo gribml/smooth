@@ -52,10 +52,10 @@
 \usepackage{inconsolata}
 
 
-\definecolor{colKeys}{rgb}{0,0,0.9} 
-\definecolor{colIdentifier}{rgb}{0,0,0} 
-\definecolor{colString}{rgb}{0.7,0,0} 
-\definecolor{colComments}{rgb}{0,0.6,0} 
+\definecolor{colKeys}{rgb}{0,0,0.9}
+\definecolor{colIdentifier}{rgb}{0,0,0}
+\definecolor{colString}{rgb}{0.7,0,0}
+\definecolor{colComments}{rgb}{0,0.6,0}
 \usepackage{listings}
 \lstset{
   language=C++,
@@ -108,7 +108,7 @@
 \rhead[\fancyplain{}{\bf\leftmark}]{\fancyplain{}{}} % display header
 \fancyfoot[C]{\bf\thepage} % display footer (page number)
 \fancyfoot[R]{\bf\today} % display footer (date)
-\fancypagestyle{plain}{ 
+\fancypagestyle{plain}{
 	\fancyhead{} \renewcommand{\headrulewidth}{0pt}
 }
 % \newcommand{\clearemptydoublepage}{\newpage{\pagestyle{plain}\cleardoublepage}}
@@ -117,7 +117,7 @@
 \usepackage{enumerate}
 \usepackage{afterpage,lastpage,fancyhdr}
 \usepackage[includeheadfoot,margin=2.5cm]{geometry}
-\geometry{letterpaper}                   % ... or a4paper or a5paper or ... 
+\geometry{letterpaper}                   % ... or a4paper or a5paper or ...
 
 % \DeclareGraphicsRule{.tif}{png}{.png}{`convert #1 `dirname #1`/`basename #1 .tif`.png}
 
@@ -178,64 +178,106 @@
 \begin{document}
 \maketitle
 \section{Introduction}
-The ``Smooth'' program is a mesh pre-processing algorithm responsible for improving a specific, measurable characteristic, known as \emph{quality}.  A higher \emph{quality} mesh aids local convergence properties in finite element analysis, where non-uniform domains require varying degrees of granularity.  The ``Smooth'' algorithm concerns a a triangular disretization in 2D. The \emph{quality} of the individual triangle faces based on a nonlinear combination of the components of a metric tensor at each of the nodes of that triangle.  In our simulations, a suboptimally constructed mesh typically sees an average improvement of 6\% with the minimum \emph{quality} of any triangular face increasing 30-35\%.  We investigated various performance enhancements on the \textbf{Intel Xeon CPU E5606 2.13GHz} CPU with 4 cores.  Our approach was twofold.  We first conisdered serial optimisations by using various profiling tools to minimize instruction count and by exploiting locality of some of the data.   Next, we exploited the inherent parallelism using the OpenCL programming on the \textbf{NVIDIA GE Force 570 (GF110 architecture)}, available through the computer lab on the ``Graphics'' machines.  OpenCL version 1.1 was used for the GPU code, while the GCC 4.6.3 compiler compiled C++ code.  All recorded benchmark results were obtained with the -O3 optimisation flag.  In all cases, we ensured that the machine was idle during these tests to ensure higher performance and uniformity between results.  We recorded 10 samples for each run to produce a more confident estimate of compute time.
+The ``Smooth'' program is a mesh pre-processing algorithm responsible for improving a measurable characteristic known as \emph{quality}.
+A higher \emph{quality} mesh aids local convergence properties in finite element analysis, where non-uniform domains require varying degrees of granularity.
+The ``Smooth'' algorithm consists of performing triangular discretisation in 2D.
+The \emph{quality} of an individual triangle face is calculated using a nonlinear combination of the components of a metric tensor at each of the triangle's nodes.
+In our simulations, a sub-optimally constructed mesh typically sees a mean quality increase by 6\% with the minimum \emph{quality} of any triangular face increasing 30-35\%.
+We investigated various performance enhancements on the \textbf{Intel Xeon CPU E5606 2.13GHz} CPU with 4 cores.
+Our approach was twofold.
+We first considered serial optimisations by using various profiling tools to minimise instruction count and by {\color{red} exploiting locality of some of the data.}
+Next, we exploited the {\color{red} inherent} parallelism using the OpenCL programming language on the \textbf{NVIDIA GeForce 570 (GF110 architecture)}, available through the computer lab on the ``Graphic01'' machine.
+OpenCL version 1.1 was used for the GPU code, while the GCC 4.6.3 compiler compiled C++ code.
+All recorded benchmark results were obtained with the -O3 optimisation flag.
+In all cases, we ensured that the machine was idle during these tests to ensure higher performance and uniformity between results.
+We recorded 10 samples for each run to produce a more accurate estimation of the computation time.
 
 \section{Profiling the Code}
-We first tackled the problem of optimising the serial version of the code.  Optimisations at this stage will also help in the parallel implementation, especially when those performance gains are seen in the parallel region of the code (generally speaking).  An Apple MacBook Air (with Intel i7 2.0GHz) with XCode, GCC 4.2 and Instruments (for profiling) was initially used.  This process identifield that the code spending 60\% of the time in \verb+element_quality+, which is used to evaluate the quantitative effect of local changes to node coordinates within a mesh.  For a node neighboring $n$ triangles, $2n$ calls are made to this function.  Furthermore, if $m$ nodes exist in the mesh and we use $I$ iterations to converge to a more optimal mesh, the total number of these calls is bounded by:
+We first tackled the problem of optimising the serial version of the code.
+Optimisations at this stage will also help in the parallel implementation, especially when those performance gains are seen in the parallel region of the code (generally speaking).
+An Apple MacBook Air (with Intel i7 2.0GHz) with XCode, GCC 4.2 and Instruments (for profiling) was initially used.
+This process identified that the code was spending 60\% of the time in \verb+element_quality+, which is used to evaluate the quantitative effect of local changes to node coordinates within a mesh.
+For a node neighbouring $n$ triangles, $2n$ calls are made to this function.
+Furthermore, if $m$ nodes exist in the mesh and we use $I$ iterations to converge to a more optimal mesh, the total number of these calls is bounded by:
 $$
 2m\cdot n\Delta(G)
 $$
-where $\Delta(G)$ is the maximum degree of the mesh.  Within \verb+element_quality+, the standard power function $pow(x, y) = x^y$ took an inordinate amount of time, as well as computations for \verb+element_area+ and accesses to elements of \verb+vector+ fields in the \verb+Mesh+ class.  Some further time was spent solving a 2-by-2 system of linear equations and in helper functions measuring properties of the mesh.  The profiler allowed us to further determine that these resource uses were far from optimal since processor usage varied greatly throughout the program's execution.  As expected the program does not tax the memory system, given that the only updates are to two floating point values in the form of coorodinate updates.
+where $\Delta(G)$ is the maximum degree of the mesh.
+Within \verb+element_quality+, the standard power function $pow(x, y) = x^y$ took an inordinate amount of time, as well as computations for \verb+element_area+ and accesses to elements of the \verb+vector+ fields in the \verb+Mesh+ class.
+Some further time was spent solving a 2-by-2 system of linear equations and in helper functions measuring properties of the mesh.
+The profiler allowed us to further determine that these resource uses were far from optimal since processor usage varied greatly throughout the program's execution.
+As expected the program does not tax the memory system, given that the only updates are to two floating point values in the form of coordinate updates.
+{\color{red} Is this true? What about reads? Spatial/Temporal locality?}
 
-\section{Optimizing in Serially}
-The \verb+Mesh+ class uses \verb+std::vector+ objects to encapsulate relationships between Nodes and mesh Elements.  However, adjacent Nodes have coordinates and metric values in spacially disparate places.  However, we will tackle this challenge on the GPU by passing vectorized arrays to the device.  
+\section{Optimising the serial implementation}
+The \verb+Mesh+ class uses \verb+std::vector+ objects to encapsulate relationships between Nodes and mesh Elements.
+However, adjacent Nodes have coordinates and metric values in spatially disparate places.
+However, we will tackle this challenge on the GPU by passing {\color{red} vectorised arrays} to the device.
 We gained execution speedup by re-writing the \verb+pow(f * (2.0 - f), 3.0)+ call explicitly as 3 multiplications:
 \begin{lstlisting}[ ]
 double F = f * (2.0 - f);
 F = F * F * F;
 \end{lstlisting}
-which showed a 4.7\% improvement (from 7.05 seconds to 6.72).  Next, the branching code for the variable \verb+f = min(l/3.0, 3.0/l)+ was modified to eliminate the costly division operation:
+which showed a 4.7\% improvement (from 7.05 seconds to 6.72).
+Next, the {\color{red} branching code} for the variable \verb+f = min(l/3.0, 3.0/l)+ was modified to eliminate the costly division operation:
 \begin{lstlisting}[ ]
-f = l<3.0 ? l/3.0 : 3.0/l;
+f = l < 3.0 ? l / 3.0 : 3.0 / l;
 \end{lstlisting}
-Because the following calculations rely on the evaluation of this branch, and the number of mispredictions is large, this was an important step in speeding up the serial algorithm.
-We also considered few purely mathematical (rather than architectural) optimisations.  Specifically, a call to \verb+smooth+ computes the 2x2 linear system:
+Because the following calculations rely on the evaluation of this branch, and the number of {\color{red} mis-predictions} is large, this was an important step in speeding up the serial algorithm.
+We also considered few purely mathematical (rather than architectural) optimisations.
+Specifically, a call to \verb+smooth+ computes the 2x2 linear system:
 $$
 \mathbf{A}\vec{q} = \vec{p}
 $$
-by calling \verb+svd_solve_2x2+ $n \cdot m$ times, which uses singular value decomposition (SVD) to arrive at the solution.  A brute-force calculation showed another 5\% speedup.  Another mathematical optimisation relies on the observation that the code is attempting to converge on a smoother grid, while iterating through the nodes a fixed (200) number of times.  Empirically, we noticed that convergence was achieved after 10 such steps, thus making a 20-fold saving immediately.  For other grids, a more flexible approach can be used at no cost to measures the overall improvement in \emph{quality} in order to stop these iterations.  While the grids we studied exhibited quick convergence, there is no guarantee that this will be the case for other grids.
+by calling \verb+svd_solve_2x2+ $n \cdot m$ times, which uses singular value decomposition (SVD) to arrive at the solution.
+A brute-force calculation showed another 5\% speedup.
+Another mathematical optimisation relies on the observation that the code is attempting to converge on a smoother grid, while iterating through the nodes a fixed (200) number of times.
+Empirically, we noticed that convergence was achieved after 10 such steps, thus making a 20-fold saving immediately.
+For other grids, a more flexible approach can be used at no cost to measures the overall improvement in \emph{quality} in order to stop these iterations.
+While the grids we studied exhibited quick convergence, there is no guarantee that this will be the case for other grids.
 
-We looked at speeding up the \verb+element_area+ functioncall.  Inoved inside the \verb+element_quality+ function, the call to \verb+element_area+ retrieves the same data elements as its calling function.  However, combining them showed no effect, since the compiler already makes this optimisation in the code generation step.  
+We looked at speeding up the \verb+element_area+ function call.
+Inside the \verb+element_quality+ function, the call to \verb+element_area+ {\color{red} retrieves the same data elements as its calling function}.
+However, combining them showed no effect, since the compiler already makes this optimisation in the code generation step.
 
-The code spent some time accessing 
+{\color{red} The code spent some time accessing}
 
 \section{Parallelising using OpenCL}
-As first, naiive, parallelisation attempt, we used OpenMP, a multicore programming framework, to distribute work among the CPU cores.  Although the loop controlling convergence of the algorithm could not be parallelised (since prior iterations had changed the mesh to an incrementally higher quality), the next loop, over the Nodes assigned nodes available cores.  Although this saw a factor 2 speedup and produced almost identical results to the serial version, it opens the door for the possibility of adjacent Nodes being altered (or worse, the same Node) by parallel threads of execution, leaving a lower quality grid than previously found.  When we inserted critical regions around all nodes neighboring each worker's Node, but saw a significant decrease in performance as threads stalled waiting for other threads to release their data locks.
+For our first, naive, parallelisation attempt, we used OpenMP, a multicore programming framework, to distribute work among the CPU cores.
+Although the loop controlling convergence of the algorithm could not be parallelised (since prior iterations had changed the mesh to an incrementally higher quality), the next loop, which iterated over the nodes, could be parallelised allowing us to utilise all available cores.
+Although this saw a factor 2 speedup and produced almost identical results to the serial version, {\color{red} TODO: FIx eng: it opens the door for the possibility of adjacent Nodes being altered} (or worse, the same Node{\color{red}??}) by parallel threads of execution, leaving a lower quality grid than previously found.
+When we inserted critical regions around every node's neighbours to stop data-conflicts, we saw a significant decrease in performance as threads stalled waiting for other threads to release their data locks.
 
-To properly take advantage of OpenCL and the NVIDIA GPU on our testing platform, we chose to parallelise the work being done by the \verb+smooth+ function, which computes a \emph{quality} measure at each node, calculates updated coordinates for that node, then recomputes \emph{quality} to ensure that it improved.  It rolls back the changes results if \emph{quality} decreases.  The challenge of parallelising this code is twofold: eliminate contention between threads doing work on adjacent nodes, then write code to copy the relevant data to the GPU and do the correct computation within each thread.
+To properly take advantage of OpenCL and the NVIDIA GPU on our testing platform, we chose to parallelise the work being done by the \verb+smooth+ function, which computes a \emph{quality} measure at each node, calculates updated coordinates for that node, then recomputes \emph{quality} to ensure that it improved.
+It rolls back the changes results if \emph{quality} decreases.
+The challenge of parallelising this code is twofold: eliminate contention between threads doing work on adjacent nodes, then write code to copy the relevant data to the GPU and do the correct computation within each thread.
 
-\subsection{Mesh Coloring}
-We employed a simple approach to ``color'' the nodes, i.e. assign different values to non-adjacent nodes.  Coloring the nodes is necessary to ensure that concurrently executing threads on the GPU do not move coordinates of each other's adjacent nodes.  Our algorithm iterates over the nodes and assigns to itself the lowest unused color among that node's adjacency list.
+\subsection{Mesh Colouring}
+We employed a simple approach to ``colour'' the nodes, i.e. assign different values to non-adjacent nodes.
+Colouring the nodes is necessary to ensure that concurrently executing threads on the GPU do not move coordinates of each other's adjacent nodes.
+Our algorithm iterates over the nodes and assigns to itself the lowest unused colour among that node's adjacency list.
 \begin{algorithm}[H]
-\caption{Graph Coloring}
-\label{al:color}
+\caption{Graph Colouring}
+\label{al:colour}
 \begin{algorithmic}[1]
-\STATE Initialize colors[vid] to -1 $\forall$ vid
+\STATE Initialise colours[vid] to -1 $\forall$ vid
 \FOR{$vid=1\hdots m$}
-  \STATE color = 0
+  \STATE colour = 0
   \FOR{$j=1\hdots n_{vid}$}
-    \IF{colors[j] == color}
-      \STATE foundColor = false
+    \IF{colours[j] == colour}
+      \STATE foundColour = false
       \STATE break
     \ENDIF
   \ENDFOR
-  \STATE colors[vid] = color;
+  \STATE colours[vid] = colour;
 \ENDFOR
 \end{algorithmic}
 \end{algorithm}
 
 \subsection{OpenCL-specific Implementation}
-OpenCL is a GPU computing framework supported by the open source community supported by most commerical GPU and CPU hardware.  Our code, to be executed on the device, is written in a \verb+Mesh.cl+ file.  The C++ program compiles this file and 
+OpenCL is a GPU computing framework supported by the open source community supported by most commerical GPU and CPU hardware.
+Our code, to be executed on the device, is written in a \verb+Mesh.cl+ file.
+The C++ program compiles this file and 
 \section{Results}
 %  various charts and tables of data from running the code
 
@@ -257,4 +299,4 @@ OpenCL is a GPU computing framework supported by the open source community suppo
 % reordering the nodes to keep all threads working, means eliminiating spacial locality didn't work
 
 
-\end{document}  
+\end{document}
