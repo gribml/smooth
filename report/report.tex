@@ -185,7 +185,7 @@ The \emph{quality} of an individual triangle face is calculated using a nonlinea
 In our simulations, a sub-optimally constructed mesh typically sees a mean quality increase by 6\% with the minimum \emph{quality} of any triangular face increasing 30-35\%.
 We investigated various performance enhancements on the \textbf{Intel Xeon CPU E5606 2.13GHz} CPU with 4 cores.
 Our approach was twofold.
-We first considered serial optimisations by using various profiling tools to minimise instruction count and expensive instructions.
+We first considered sequential optimisations by using various profiling tools to minimise instruction count and expensive instructions.
 Next, we exploited the inherent parallelism using the OpenCL programming language on the \textbf{NVIDIA GeForce 570 (GF110 architecture)}, available through the computer lab on the ``Graphic01'' machine.
 OpenCL version 1.1 was used for the GPU code, while the GCC 4.6.3 compiler compiled C++ code.
 All recorded benchmark results were obtained with the -O3 optimisation flag.
@@ -193,7 +193,7 @@ In all cases, we ensured that the machine was idle during these tests to ensure 
 We recorded 10 samples for each run to produce a more accurate estimation of the computation time.
 
 \section{Profiling the Code}
-We first tackled the problem of optimising the serial version of the code.
+We first tackled the problem of optimising the sequential version of the code.
 Optimisations at this stage will also help in the parallel implementation, especially when those performance gains are seen in the parallel region of the code (generally speaking).
 An Apple MacBook Air (with Intel i7 2.0GHz) with XCode, GCC 4.2 and Instruments (for profiling) was initially used.
 This process identified that the code was spending 60\% of the time in \verb+element_quality+, which is used to evaluate the quantitative effect of local changes to node coordinates within a mesh.
@@ -232,7 +232,7 @@ There are spikes in multiple CPU's as the process is moved onto different CPU's 
 \end{changemargin}
 \end{figure}
 
-\section{Optimising the serial implementation}
+\section{Optimising the sequential implementation}
 The \verb+Mesh+ class uses \verb+std::vector+ objects to encapsulate relationships between Nodes and mesh Elements.
 However, adjacent Nodes have coordinates and metric values in spatially disparate places.
 However, we will tackle this challenge on the GPU by passing vectorisable arrays to the device.
@@ -265,7 +265,7 @@ However, combining them showed no effect, since the compiler already makes this 
 \section{Parallelising using OpenCL}
 For our first, naive, parallelisation attempt, we used OpenMP, a multicore programming framework, to distribute work among the CPU cores.
 Although the loop controlling convergence of the algorithm could not be parallelised (since prior iterations had changed the mesh to an incrementally higher quality), the next loop, which iterated over the nodes, could be parallelised allowing us to utilise all available cores.
-Although this saw a factor 2 speedup and produced almost identical results to the serial version, it returned non-deterministic output because of the data-conflicts when executing adjacent nodes by parallel threads of execution, leaving a lower quality grid than previously found.
+Although this saw a factor 2 speedup and produced almost identical results to the sequential version, it returned non-deterministic output because of the data-conflicts when executing adjacent nodes by parallel threads of execution, leaving a lower quality grid than previously found.
 When we inserted critical regions around every node's neighbours to stop data-conflicts, we saw a significant decrease in performance as threads stalled waiting for other threads to release their data locks.
 
 To properly take advantage of OpenCL and the NVIDIA GPU on our testing platform, we chose to parallelise the work being done by the \verb+smooth+ function, which computes a \emph{quality} measure at each node, calculates updated coordinates for that node, then recomputes \emph{quality} to ensure that it improved.
@@ -336,7 +336,7 @@ __kernel void smooth
 __global uint3 *ENList, __global double3 *metric, __global float2 *coords, __global float2 *normals,
 __global uint *colorIdxs, const uint orientation, const uint NNodes, const uint colorOffset);
 \end{lstlisting}
-The data is accessed with greater bandwidth, but because NVIDIA writes data serially, we only saw a small performance increase.  Decreasing precision, while technically changing the problem being solved, helped with data throughput and did yield performance gains.
+The data is accessed with greater bandwidth, but because NVIDIA writes data sequentially, we only saw a small performance increase.  Decreasing precision, while technically changing the problem being solved, helped with data throughput and did yield performance gains.
 
 Further modifications to the original \verb+smooth+ kernel were also made.  We cached previously computed \verb+element_quality+ values for nodes which were not changed.  Thus these computations were not re-done.  Lastly, we looked at not calculating \emph{quality} when coordinates were unchanged.  However, since most of the time these coordinates were moved (by at least a small amount), this had a negligible effect.
 
@@ -380,7 +380,7 @@ Full OpenCL: 0.406521
 Full OpenCL with vectorisation: 0.405536
 
 \section{Conclusion}
-Mesh smoothing algorithms are an important step in the scientific computing pipeline.  Serial algorithms in this field  should pay special attention to how and where compute resources are spent.  Small, incremental improvements in instruction count or memory accesses in some function calls could have large implications for performance if those function calls represent a large percentage of overall compute time.  One should also balance these considerations agains the optimisations built into the compiler.  As we demonstrated, some attempts at increasing performance were met with failure because the compiler we chose, gcc, already does a very good job at optimising generated code.  The overwhelming conclusion from our research and experimentation shows that parallelism inherent in a program's structure is best exploited using the architecture in current GPUs.  However, re-phrasing the problem in a way to expose the parallelism is sometimes non-obvious.  The implementation of graph coloring ensure that concurrent executions of incremental mesh improvements did not interfere to produce inferior results.  We believe that an improved graph coloring algorithm could further reduce execution time as much as 20\%.
+Mesh smoothing algorithms are an important step in the scientific computing pipeline.  Sequential algorithms in this field  should pay special attention to how and where compute resources are spent.  Small, incremental improvements in instruction count and memory accesses in some function calls could have large implications for performance if those function calls represent a large percentage of overall compute time.  One should also balance these considerations against the optimisations built into the compiler.  As we demonstrated, some attempts at increasing performance were met with failure because the compiler we chose, gcc, already does a very good job at optimising generated code.  The overwhelming conclusion from our research and experimentation shows that parallelism inherent in a program's structure is best exploited using the architecture in current GPUs.  However, re-phrasing the problem in a way to expose the parallelism is sometimes non-obvious.  The implementation of graph colouring ensured that concurrent executions of incremental mesh improvements did not interfere to produce inferior results.  We believe that an improved graph colouring algorithm could further reduce execution time as much as 20\%.
 
 % reordering the nodes to keep all threads working, means eliminiating spacial locality didn't work
 
