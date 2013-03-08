@@ -234,8 +234,23 @@ We employed a simple approach to ``color'' the nodes, i.e. assign different valu
 \end{algorithmic}
 \end{algorithm}
 
+\subsection{OpenCL-specific Implementation}
+OpenCL is a GPU computing framework supported by the open source community supported by most commerical GPU and CPU hardware.  Our code, to be executed on the device, is written in a \verb+Mesh.cl+ file.  The C++ program compiles this file and 
 \section{Results}
 %  various charts and tables of data from running the code
+
+% need to create a sample output for 5 runs of initial code
+% need to create a sample output for 5 runs of final code
+
+% need to produce a table with the following average times (3 grid sizes)
+% initial code
+% changing pow
+% changing branch "l < 3.0..."
+% changing matrix solver
+% changing vector<> to double*
+% naive OpenMP
+% full OpenCL
+
 \section{Conclusion}
 
 
