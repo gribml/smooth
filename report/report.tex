@@ -213,17 +213,24 @@ The profiler allowed us to further determine that these resource uses were far f
 \caption{Profiler output for intial run of Smooth}
 \end{changemargin}
 \end{figure}
-As expected the program does not tax the memory system, given that the only updates are to two floating point values in the form of coordinate updates.
-The profiler output for CPU utilisation is presented in Figure \ref{fig:cpu_util}
+
+As show in Figure \ref{fig:mem_util}, the program does not tax the memory system, given that the only updates are to two floating point values in the form of coordinate updates.
+There are spikes in multiple CPU's as the process is moved onto different CPU's by the kernel. The profiler output for CPU utilisation is presented in Figure \ref{fig:cpu_util}
+\begin{figure}[!h]
+\begin{changemargin}{-20mm}{-20mm}
+\center
+\includegraphics[scale=0.4]{mem_util.png}
+\caption{Instruments output for RAM utilisation}
+\end{changemargin}
+\end{figure}
+
 \begin{figure}[!h]
 \begin{changemargin}{-20mm}{-20mm}
 \center
 \includegraphics[scale=0.4]{cpu_util.png}
-\caption{Instruments output for CPU Utilisation}
+\caption{Instruments output for CPU utilisation}
 \end{changemargin}
 \end{figure}
-
-{\color{red} Is this true? (Yes, because of image) What about reads? Spatial/Temporal locality?}
 
 \section{Optimising the serial implementation}
 The \verb+Mesh+ class uses \verb+std::vector+ objects to encapsulate relationships between Nodes and mesh Elements.
@@ -235,11 +242,10 @@ double F = f * (2.0 - f);
 F = F * F * F;
 \end{lstlisting}
 which showed a 4.7\% improvement (from 7.05 seconds to 6.72).
-Next, the {\color{red} branching code} for the variable \verb+f = min(l/3.0, 3.0/l)+ was modified to eliminate the costly division operation:
+Next, the branching code for the variable \verb+f = min(l/3.0, 3.0/l)+ was modified to eliminate the costly division operation:
 \begin{lstlisting}[ ]
 f = l < 3.0 ? l / 3.0 : 3.0 / l;
 \end{lstlisting}
-Because the following calculations rely on the evaluation of this branch, and the number of {\color{red} mis-predictions} is large, this was an important step in speeding up the serial algorithm.
 We also considered few purely mathematical (rather than architectural) optimisations.
 Specifically, a call to \verb+smooth+ computes the 2x2 linear system:
 \[
@@ -250,18 +256,16 @@ A brute-force calculation showed another 5\% speedup.
 Another mathematical optimisation relies on the observation that the code is attempting to converge on a smoother grid, while iterating through the nodes a fixed (200) number of times.
 Empirically, we noticed that convergence was achieved after 10 such steps, thus making a 20-fold saving immediately.
 For other grids, a more flexible approach can be used at no cost to measures the overall improvement in \emph{quality} in order to stop these iterations.
-While the grids we studied exhibited quick convergence, there is no guarantee that this will be the case for other grids.
+While the grids we studied exhibited quick convergence, there is no guarantee that this will be the case for other grids so we didn't include this as an optimisation.
 
 We looked at speeding up the \verb+element_area+ function call.
-Inside the \verb+element_quality+ function, the call to \verb+element_area+ {\color{red} retrieves the same data elements as its calling function}.
+Inside the \verb+element_quality+ function, the call to \verb+element_area+ retrieves the same data elements as its calling function.
 However, combining them showed no effect, since the compiler already makes this optimisation in the code generation step.
-
-{\color{red} The code spent some time accessing}
 
 \section{Parallelising using OpenCL}
 For our first, naive, parallelisation attempt, we used OpenMP, a multicore programming framework, to distribute work among the CPU cores.
 Although the loop controlling convergence of the algorithm could not be parallelised (since prior iterations had changed the mesh to an incrementally higher quality), the next loop, which iterated over the nodes, could be parallelised allowing us to utilise all available cores.
-Although this saw a factor 2 speedup and produced almost identical results to the serial version, {\color{red} TODO: FIx eng: it opens the door for the possibility of adjacent Nodes being altered} (or worse, the same Node{\color{red}??}) by parallel threads of execution, leaving a lower quality grid than previously found.
+Although this saw a factor 2 speedup and produced almost identical results to the serial version, it returned non-deterministic output because of the data-conflicts when executing adjacent nodes by parallel threads of execution, leaving a lower quality grid than previously found.
 When we inserted critical regions around every node's neighbours to stop data-conflicts, we saw a significant decrease in performance as threads stalled waiting for other threads to release their data locks.
 
 To properly take advantage of OpenCL and the NVIDIA GPU on our testing platform, we chose to parallelise the work being done by the \verb+smooth+ function, which computes a \emph{quality} measure at each node, calculates updated coordinates for that node, then recomputes \emph{quality} to ensure that it improved.
