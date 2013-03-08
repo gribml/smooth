@@ -356,7 +356,7 @@ Further modifications to the original \verb+smooth+ kernel were also made.  We c
 % fullo OpenCL with vectorization
 
 \section{Conclusion}
-
+Mesh smoothing algorithms are an important step in the scientific computing pipeline.  Serial algorithms in this field  should pay special attention to how and where compute resources are spent.  Small, incremental improvements in instruction count or memory accesses in some function calls could have large implications for performance if those function calls represent a large percentage of overall compute time.  One should also balance these considerations agains the optimisations built into the compiler.  As we demonstrated, some attempts at increasing performance were met with failure because the compiler we chose, gcc, already does a very good job at optimising generated code.  The overwhelming conclusion from our research and experimentation shows that parallelism inherent in a program's structure is best exploited using the architecture in current GPUs.  However, re-phrasing the problem in a way to expose the parallelism is sometimes non-obvious.  Graph coloring enabled us to ensure that concurrent executions of incremental mesh improvements did not interfere to produce inferior results.
 
 % reordering the nodes to keep all threads working, means eliminiating spacial locality didn't work
 
