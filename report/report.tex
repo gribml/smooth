@@ -185,8 +185,8 @@ The \emph{quality} of an individual triangle face is calculated using a nonlinea
 In our simulations, a sub-optimally constructed mesh typically sees a mean quality increase by 6\% with the minimum \emph{quality} of any triangular face increasing 30-35\%.
 We investigated various performance enhancements on the \textbf{Intel Xeon CPU E5606 2.13GHz} CPU with 4 cores.
 Our approach was twofold.
-We first considered serial optimisations by using various profiling tools to minimise instruction count and by {\color{red} exploiting locality of some of the data.}
-Next, we exploited the {\color{red} inherent} parallelism using the OpenCL programming language on the \textbf{NVIDIA GeForce 570 (GF110 architecture)}, available through the computer lab on the ``Graphic01'' machine.
+We first considered serial optimisations by using various profiling tools to minimise instruction count and expensive instructions.
+Next, we exploited the inherent parallelism using the OpenCL programming language on the \textbf{NVIDIA GeForce 570 (GF110 architecture)}, available through the computer lab on the ``Graphic01'' machine.
 OpenCL version 1.1 was used for the GPU code, while the GCC 4.6.3 compiler compiled C++ code.
 All recorded benchmark results were obtained with the -O3 optimisation flag.
 In all cases, we ensured that the machine was idle during these tests to ensure higher performance and uniformity between results.
@@ -223,12 +223,12 @@ The profiler output for CPU utilisation is presented in Figure \ref{fig:cpu_util
 \end{changemargin}
 \end{figure}
 
-{\color{red} Is this true? What about reads? Spatial/Temporal locality?}
+{\color{red} Is this true? (Yes, because of image) What about reads? Spatial/Temporal locality?}
 
 \section{Optimising the serial implementation}
 The \verb+Mesh+ class uses \verb+std::vector+ objects to encapsulate relationships between Nodes and mesh Elements.
 However, adjacent Nodes have coordinates and metric values in spatially disparate places.
-However, we will tackle this challenge on the GPU by passing {\color{red} vectorised arrays} to the device.
+However, we will tackle this challenge on the GPU by passing vectorisable arrays to the device.
 We gained execution speedup by re-writing the \verb+pow(f * (2.0 - f), 3.0)+ call explicitly as 3 multiplications:
 \begin{lstlisting}[ ]
 double F = f * (2.0 - f);
@@ -242,9 +242,9 @@ f = l < 3.0 ? l / 3.0 : 3.0 / l;
 Because the following calculations rely on the evaluation of this branch, and the number of {\color{red} mis-predictions} is large, this was an important step in speeding up the serial algorithm.
 We also considered few purely mathematical (rather than architectural) optimisations.
 Specifically, a call to \verb+smooth+ computes the 2x2 linear system:
-$$
+\[
 \mathbf{A}\vec{q} = \vec{p}
-$$
+\]
 by calling \verb+svd_solve_2x2+ $n \cdot m$ times, which uses singular value decomposition (SVD) to arrive at the solution.
 A brute-force calculation showed another 5\% speedup.
 Another mathematical optimisation relies on the observation that the code is attempting to converge on a smoother grid, while iterating through the nodes a fixed (200) number of times.
@@ -291,7 +291,7 @@ Our algorithm iterates over the nodes and assigns to itself the lowest unused co
 \end{algorithm}
 
 \subsection{OpenCL-specific Implementation}
-OpenCL is a GPU computing framework supported by the open source community supported by most commerical GPU and CPU hardware.
+OpenCL is a GPU computing framework supported by the open source community supported by most commercial GPU and CPU hardware.
 Our code, to be executed on the device, is written in a \verb+Mesh.cl+ file.
 The C++ program compiles this file and launches execution.  The outline looks as follows:
 \begin{algorithm}[H]
@@ -312,13 +312,13 @@ void smooth(Mesh *mesh, size_t niter);
 double element_quality(size_t eid);
 \end{lstlisting}
 
-became 
+became
 
 \begin{lstlisting}[ ]
 bool isSurfaceNode(size_t vid, __global uint *NEListOffs, __global uint *NNListOffs);
 __kernel void smooth
-(__global uint *NEList, __global uint *NNList,  __global uint *NEListOffs, __global uint *NNListOffs,  
-__global uint *ENList, __global double *metric, __global double *coords, __global double *normals, 
+(__global uint *NEList, __global uint *NNList,  __global uint *NEListOffs, __global uint *NNListOffs,
+__global uint *ENList, __global double *metric, __global double *coords, __global double *normals,
 __global uint *colorIdxs, const uint orientation, const uint NNodes, const uint colorOffset);
 double element_quality(size_t eid, __global uint *ENList, __global double *metric, __global double *coords, int orientation);
 \end{lstlisting}
@@ -327,8 +327,8 @@ These items are stored in the global memory of the GPU.  A further optimisation 
 After measuring benchmark results, we made further optimisations by exploiting vectorisation of data the GPU.  Here is the header file for this optimisation:
 \begin{lstlisting}[ ]
 __kernel void smooth
-(__global uint3 *NEList, __global uint3 NNList,  __global uint *NEListOffs, __global uint *NNListOffs,  
-__global uint3 *ENList, __global double3 *metric, __global float2 *coords, __global float2 *normals, 
+(__global uint3 *NEList, __global uint3 NNList,  __global uint *NEListOffs, __global uint *NNListOffs,
+__global uint3 *ENList, __global double3 *metric, __global float2 *coords, __global float2 *normals,
 __global uint *colorIdxs, const uint orientation, const uint NNodes, const uint colorOffset);
 \end{lstlisting}
 The data is accessed with greater bandwidth, but because NVIDIA writes data serially, we only saw a small performance increase.  Decreasing precision, while technically changing the problem being solved, helped with data throughput and did yield performance gains.
