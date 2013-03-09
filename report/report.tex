@@ -1,4 +1,4 @@
-\documentclass[a4paper,11pt, twocolumn]{article}
+\documentclass[a4paper,12pt, twocolumn]{article}
 \usepackage[pdftex]{graphicx}
 % \usepackage{amssymb}
 \usepackage{amsmath}
@@ -347,8 +347,21 @@ Further modifications to the original \verb+smooth+ kernel were also made.  We c
 
 \section{Results}
 %  various charts and tables of data from running the code
+In this section we detail the incremental improvements we found when optimising the ``Smooth`` program.   the table below shows the various improvements at each step for the run time of the program over the \verb+small.vtu+ mesh.
+\begin{tabular}{|c|c|}
+\hline
+Change & Time (sec)  \\ \hline
+Initial code & 14.0367 \\  \hline
+Changing pow & 7.63867  \\ \hline
+Changing branch & 7.45587 \\ \hline
+Changing matrix solver & 7.36709 \\ \hline
+Changing vector<> to double &  5.30121 \\ \hline
+Naive OpenMP & 1.76223 \\ \hline
+Full OpenCL & 0.406521 \\ \hline
+Full OpenCL w/vectorisation & 0.405536 \\ \hline
+\end{tabular}
 
-OpenCL runs on the large mesh:
+We ran our fully optimised OpenCL code on the large mesh with the following results
 \begin{verbatim}
 BENCHMARK: 22.3899s
 BENCHMARK: 22.3783s
@@ -358,35 +371,19 @@ BENCHMARK: 22.3886s
 
 Quality mean:  0.901597
 Quality min:   0.583406
-\end{verbatim}
-
-Small mesh average: 0.406521s
 
 Medium mesh average: 2.44972s
 
 Large mesh average: 22.3789s
+\end{verbatim}
+This represents a 20-fold improvement over the 400+ seconds we saw when initially running the the program.
 
-All for small mesh:
 
-Initial code: 14.0367s
-
-Changing pow: 7.63867s
-
-Changing branch: 7.45587s
-
-Changing matrix solver: 7.36709s
-
-Changing vector<> to double: 5.30121s
-
-Naive OpenMP implementation: 1.76223s
-
-Full OpenCL: 0.406521
-
-Full OpenCL with vectorisation: 0.405536
 
 \section{Conclusion}
 Mesh smoothing algorithms are an important step in the scientific computing pipeline.  Sequential algorithms in this field  should pay special attention to how and where compute resources are spent.  Small, incremental improvements in instruction count and memory accesses in some function calls could have large implications for performance if those function calls represent a large percentage of overall compute time.  One should also balance these considerations against the optimisations built into the compiler.  As we demonstrated, some attempts at increasing performance were met with failure because the compiler we chose, gcc, already does a very good job at optimising generated code.  The overwhelming conclusion from our research and experimentation shows that parallelism inherent in a program's structure is best exploited using the architecture in current GPUs.  However, re-phrasing the problem in a way to expose the parallelism is sometimes non-obvious.  The implementation of graph colouring ensured that concurrent executions of incremental mesh improvements did not interfere to produce inferior results.  We believe that an improved graph colouring algorithm could further reduce execution time as much as 20\%.
 
+We split the work for this project evenly, when implementing the serial and parallel optimisations, re-wring the code for compatibility with OpenCL, and collecting and preparing the results for this report.  Research into improving performance for this architecture was also done jointly: we discussed ideas, tested the ones with highest expected result and included those which yielded the best performance.
 % reordering the nodes to keep all threads working, means eliminiating spacial locality didn't work
 
 
